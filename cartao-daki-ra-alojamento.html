@@ -103,6 +103,20 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(30px,8.5vw,44px)
 .camp .tag{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:#a24a10}
 .camp h4{margin:0;font-size:17px}
 .foot{margin-top:14px;font-size:12px;color:#6b4a32}
+.steps{display:grid;gap:10px;margin:2px 0 6px}
+.steps figure{margin:0;background:#fff7ef;border:1px solid rgba(36,23,14,.12);border-radius:14px;padding:8px}
+.steps svg{display:block;width:100%;height:auto;max-height:19vh}
+.step-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.step-n{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#a24a10;font-variant-numeric:tabular-nums}
+.step-t{font-size:17px;font-weight:600;margin:0}
+.step-d{margin:0;color:#4a3324}
+.step-nav{display:flex;gap:6px}
+.step-nav button{border:1px solid rgba(36,23,14,.18);background:transparent;border-radius:50%;width:40px;height:40px;font-size:22px;line-height:1;font-weight:600;cursor:pointer;color:#24170e}
+.step-nav button.next{background:#24170e;color:var(--sand);border-color:#24170e}
+.step-nav button:disabled{opacity:.35;cursor:default}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots i{width:7px;height:7px;border-radius:50%;background:rgba(36,23,14,.2)}
+.dots i.on{background:#f2731f;width:18px;border-radius:4px}
 .close{float:right;border:0;background:rgba(36,23,14,.08);width:32px;height:32px;border-radius:50%;cursor:pointer;color:#24170e;margin:-4px -4px 0 8px}
 
 .toast{position:fixed;z-index:30;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);max-width:calc(100vw - 32px);background:var(--ink-2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -112,7 +126,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(30px,8.5vw,44px)
 <div id="ar-root"></div>
 <div id="demo-stage" hidden>
   <div class="demo-card" id="demo-card">
-    <div class="demo-layer demo-tag" id="demo-atm" hidden>ATM · SIMORede e Rede Visa<small>5 operações na SIMORede, levantamentos na Rede Visa</small></div>
+    <div class="demo-layer demo-tag" id="demo-atm" hidden>Passo 1 · Insira o cartão<small>Levantamento no ATM</small></div>
     <div class="demo-layer demo-rings" id="demo-pos" hidden><span></span><span></span><span></span></div>
     <div class="demo-layer demo-tag" id="demo-camp" hidden>Campanhas<small>Cada compra em POS apoia a solidariedade</small></div>
   </div>
@@ -164,7 +178,7 @@ const MIND_B64 = "gqF2AqhkYXRhTGlzdJGDq3RhcmdldEltYWdlgqV3aWR0aM0DWKZoZWlnaHTNAh
 const CONTEUDO = {
   atm: {
     titulo: "Usar no ATM",
-    sub: "O que pode fazer com o cartão daki em cada rede.",
+    sub: "Levantamento passo a passo e operações disponíveis em cada rede.",
     html: `
       <h3>Em Moçambique</h3>
       <div class="net"><b>SIMORede</b><ul>
@@ -210,17 +224,78 @@ function toast(msg, ms=3500){ ui.toast.textContent = msg; ui.toast.hidden = fals
 
 function setStatus(state, text){ ui.status.dataset.state = state; ui.statusText.textContent = text; }
 
+/* Passo a passo do levantamento (ilustrações genéricas; a ordem exata pode variar entre ATMs) */
+const PASSOS_ATM = [
+  { t:"Insira o cartão", d:"Introduza o cartão na ranhura, na posição indicada junto à ranhura.", ar:["Insira o cartão","na ranhura do ATM"] },
+  { t:"Marque o PIN", d:"Tape o teclado com a outra mão enquanto marca o PIN. Nunca aceite ajuda de desconhecidos.", ar:["Marque o PIN","e tape o teclado"] },
+  { t:"Escolha Levantamento", d:"No menu do ecrã, selecione a opção de levantamento em numerário.", ar:["Escolha a opção","Levantamento"] },
+  { t:"Escolha o montante", d:"Selecione um dos valores sugeridos ou introduza outro montante.", ar:["Escolha o","montante"] },
+  { t:"Retire o cartão", d:"Retire o cartão quando o ATM o devolver.", ar:["Retire o","cartão"] },
+  { t:"Retire o dinheiro", d:"Retire as notas e o talão, se o pediu. Confira o valor antes de sair.", ar:["Retire o dinheiro","e o talão"] }
+];
+let atmStep = 0;
+
+function atmSvg(s){
+  const O="#f2731f", L="#24170e", F="#fff7ef", G="#e9d9c8";
+  const hi = (cond) => cond ? O : G;
+  let screen = "";
+  if (s===0) screen = `<text x="90" y="52" text-anchor="middle" font-size="9" fill="${L}" font-family="Figtree,system-ui,sans-serif">Insira o cartão</text>`;
+  if (s===1) screen = `<text x="90" y="44" text-anchor="middle" font-size="9" fill="${L}" font-family="Figtree,system-ui,sans-serif">Introduza o PIN</text><text x="90" y="62" text-anchor="middle" font-size="14" letter-spacing="4" fill="${L}">••••</text>`;
+  if (s===2) screen = [["Levantamento",1],["Consultas",0],["Pagamentos",0]].map(([l,on],i)=>`<rect x="46" y="${27+i*16}" width="88" height="12" rx="3" fill="${on?O:G}"/><text x="52" y="${36+i*16}" font-size="7.5" fill="${L}" font-family="Figtree,system-ui,sans-serif" font-weight="${on?700:400}">${l}</text>`).join("");
+  if (s===3) screen = [0,1,2,3].map(i=>`<rect x="${46+(i%2)*46}" y="${30+Math.floor(i/2)*20}" width="40" height="14" rx="3" fill="${i===1?O:G}"/>`).join("") + `<text x="90" y="25" text-anchor="middle" font-size="7" fill="${L}" font-family="Figtree,system-ui,sans-serif">Montante</text>`;
+  if (s===4) screen = `<text x="90" y="52" text-anchor="middle" font-size="9" fill="${L}" font-family="Figtree,system-ui,sans-serif">Retire o cartão</text>`;
+  if (s===5) screen = `<text x="90" y="52" text-anchor="middle" font-size="9" fill="${L}" font-family="Figtree,system-ui,sans-serif">Retire o dinheiro</text>`;
+  let keys = "";
+  for (let r=0;r<4;r++) for (let c=0;c<3;c++) keys += `<rect x="${154+c*11}" y="${52+r*9}" width="9" height="7" rx="1.5" fill="${hi(s===1)}" stroke="${L}" stroke-width=".6"/>`;
+  let extra = "";
+  if (s===0) extra = `<g><rect x="159" y="6" width="24" height="17" rx="2.5" fill="${O}" stroke="${L}" stroke-width="1"/><rect x="162" y="10" width="6" height="5" rx="1" fill="${G}"/><path d="M171 26v5m-3-3l3 3 3-3" stroke="${L}" stroke-width="1.4" fill="none"/></g>`;
+  if (s===1) extra = `<path d="M146 60c6-18 44-18 50 0v8c-8-6-42-6-50 0z" fill="${L}" opacity=".35"/>`;
+  if (s===4) extra = `<g><rect x="159" y="8" width="24" height="17" rx="2.5" fill="${O}" stroke="${L}" stroke-width="1"/><path d="M171 6V1m-3 3l3-3 3 3" stroke="${L}" stroke-width="1.4" fill="none"/></g>`;
+  if (s===5) extra = `<g><rect x="70" y="108" width="40" height="18" rx="2" fill="${O}" stroke="${L}" stroke-width="1" transform="rotate(-6 90 117)"/><rect x="74" y="111" width="40" height="18" rx="2" fill="${O}" stroke="${L}" stroke-width="1"/><circle cx="94" cy="120" r="4" fill="none" stroke="${L}" stroke-width="1"/><rect x="161" y="100" width="18" height="22" fill="#fff" stroke="${L}" stroke-width=".8"/><path d="M164 106h12M164 110h12M164 114h8" stroke="${L}" stroke-width=".8"/></g>`;
+  return `<svg viewBox="0 0 220 135" role="img" aria-label="${PASSOS_ATM[s].t}">
+    <rect x="18" y="12" width="184" height="120" rx="10" fill="${F}" stroke="${L}" stroke-width="1.6"/>
+    <rect x="38" y="18" width="104" height="66" rx="5" fill="#fff" stroke="${L}" stroke-width="1.4"/>${screen}
+    <rect x="152" y="28" width="38" height="6" rx="2" fill="${hi(s===0||s===4)}" stroke="${L}" stroke-width="1"/>
+    ${keys}
+    <rect x="152" y="94" width="38" height="5" rx="2" fill="${hi(s===5)}" stroke="${L}" stroke-width="1"/>
+    <rect x="52" y="96" width="76" height="9" rx="2" fill="${hi(s===5)}" stroke="${L}" stroke-width="1"/>
+    ${extra}</svg>`;
+}
+
+function stepsHtml(){
+  const p = PASSOS_ATM[atmStep], last = atmStep===PASSOS_ATM.length-1;
+  return `<div class="steps">
+    <div class="step-head"><span class="step-n">Passo ${atmStep+1} de ${PASSOS_ATM.length}</span>
+      <div class="step-nav"><button type="button" class="prev" aria-label="Passo anterior" ${atmStep===0?'disabled':''}>‹</button>
+      <button type="button" class="next" aria-label="${last?'Recomeçar':'Passo seguinte'}">${last?'↺':'›'}</button></div></div>
+    <figure>${atmSvg(atmStep)}</figure>
+    <div><p class="step-t">${p.t}</p><p class="step-d">${p.d}</p></div>
+    <div class="dots" aria-hidden="true">${PASSOS_ATM.map((_,i)=>`<i class="${i===atmStep?'on':''}"></i>`).join("")}</div>
+  </div><h3>Como levantar dinheiro</h3>`;
+}
+function goStep(n){
+  atmStep = (n + PASSOS_ATM.length) % PASSOS_ATM.length;
+  renderSheet("atm");
+  const dt = document.getElementById("demo-atm"); if (dt) dt.innerHTML = `Passo ${atmStep+1} · ${PASSOS_ATM[atmStep].t}<small>Levantamento no ATM</small>`;
+  const ent = document.querySelector("#ar-atm a-plane");
+  if (ent) ent.setAttribute("src", stepTexture(atmStep));
+}
+function stepTexture(i){ return labelTexture(`Passo ${i+1}`, PASSOS_ATM[i].ar); }
+
 function renderSheet(opt){
   let h;
   if (opt === "camp"){
     h = `<h2>Campanhas</h2><p class="sub">Conteúdo atualizado pelo banco, sem mudar o cartão.</p>` +
       CAMPANHAS.map(c=>`<div class="camp"><span class="tag">${c.tag}</span><h4>${c.titulo}</h4><p>${c.texto}</p></div>`).join("");
   } else {
-    const c = CONTEUDO[opt]; h = `<h2>${c.titulo}</h2><p class="sub">${c.sub}</p>${c.html}`;
+    const c = CONTEUDO[opt]; h = `<h2>${c.titulo}</h2><p class="sub">${c.sub}</p>` + (opt==="atm" ? stepsHtml().replace('<h3>Como levantar dinheiro</h3>','<h3>Operações por rede</h3>') : "") + c.html;
   }
   ui.body.innerHTML = `<button class="close" type="button" aria-label="Fechar">✕</button>` + h +
     `<p class="foot">Protótipo de demonstração. Confirme condições nos canais oficiais do BCI.</p>`;
   ui.body.querySelector(".close").onclick = () => choose(null);
+  const pv = ui.body.querySelector(".step-nav .prev"), nx = ui.body.querySelector(".step-nav .next");
+  if (pv) pv.onclick = () => goStep(atmStep-1);
+  if (nx) nx.onclick = () => goStep(atmStep+1);
   ui.body.scrollTop = 0;
 }
 
@@ -271,7 +346,7 @@ async function startAR(){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast("Este navegador não permite usar a câmara aqui. Abra a demonstração."); return startDemo(); }
   try { await document.fonts.ready; } catch(e){}
   const src = URL.createObjectURL(new Blob([b64ToBytes(MIND_B64)], {type:"application/octet-stream"}));
-  const tAtm = labelTexture("ATM", ["SIMORede: 5 operações", "Rede Visa: levantamentos"]);
+  const tAtm = stepTexture(atmStep);
   const tPos = labelTexture("POS", ["Pagamento com PIN", "SIMORede e Rede Visa"]);
   const tCamp = labelTexture("Campanhas", ["Cada compra em POS", "apoia a solidariedade"]);
   const H = 540/856;
